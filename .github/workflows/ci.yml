@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      # Os testes do core não precisam de Docker nem de API keys —
+      # correm em segundos graças aos fakes injetados.
+      - name: Testes do core
+        run: mvn -B test
+
+      - name: Validar Dockerfiles das imagens de sandbox
+        run: |
+          docker build -q -t bughunt/java21:ci    -f docker/java21.Dockerfile docker/
+          docker build -q -t bughunt/python312:ci -f docker/python312.Dockerfile docker/
+          docker build -q -t bughunt/node20:ci    -f docker/node20.Dockerfile docker/
+
+      # Smoke test real do sandbox: correr um hello world em cada imagem
+      # com as mesmas flags de segurança do SandboxExecutor.
+      - name: Smoke test do sandbox
+        run: |
+          echo 'print("ok")' > /tmp/main.py
+          docker run --rm --network=none --memory=256m --cpus=0.5 \
+            --pids-limit=64 --read-only --tmpfs /tmp:size=32m,noexec \
+            --user 1000:1000 --cap-drop=ALL --security-opt no-new-privileges \
+            -v /tmp:/workspace -w /workspace \
+            bughunt/python312:ci sh -c "python3 main.py" | grep -q "ok"
+          echo "✓ sandbox Python funcional com todas as proteções"

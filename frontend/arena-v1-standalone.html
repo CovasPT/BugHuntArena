@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BugHunt Arena</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   BugHunt Arena — protótipo de interface
+   Estética: laboratório de campo de um caçador de bugs.
+   Fósforo âmbar para a interface, verde só no terminal de output
+   (como os monitores bicolores dos anos 80). Os desafios são
+   "espécimes" catalogados — o elemento assinatura da página.
+   ============================================================ */
+:root {
+  --bg:        #16120c;   /* castanho-negro quente, não preto puro */
+  --panel:     #1e1810;
+  --panel-2:   #241d13;
+  --line:      #3a2f1d;
+  --amber:     #e8a33d;   /* fósforo âmbar — UI */
+  --amber-dim: #a97a2f;
+  --amber-soft:#f4d9a6;
+  --green:     #7dd87d;   /* fósforo verde — SÓ output do terminal */
+  --red:       #e05d44;
+  --ink:       #d8cbb3;
+  --ink-dim:   #8d8066;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  min-height: 100vh;
+}
+/* textura subtil de scanlines — presente mas discreta */
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:9;
+  background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.12) 2px 3px);
+}
+@media (prefers-reduced-motion: reduce) { * { animation:none!important; transition:none!important; } }
+
+/* ---------- Header ---------- */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 14px 24px; border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.logo { font-family:'VT323', monospace; font-size: 30px; color: var(--amber); letter-spacing:1px; }
+.logo .blink { animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { opacity:0; } }
+.stats { display:flex; gap:22px; font-size:12px; color:var(--ink-dim); }
+.stats b { color:var(--amber-soft); font-weight:600; }
+
+/* ---------- Layout ---------- */
+main { display:grid; grid-template-columns: 340px 1fr; gap:0; min-height: calc(100vh - 61px); }
+@media (max-width: 900px){ main { grid-template-columns: 1fr; } }
+
+/* ---------- Lista de espécimes (desafios) ---------- */
+.specimens {
+  border-right:1px solid var(--line); padding:18px; overflow-y:auto;
+}
+.specimens h2 {
+  font-family:'VT323',monospace; font-size:19px; color:var(--amber-dim);
+  text-transform:uppercase; letter-spacing:2px; margin-bottom:14px;
+}
+.card {
+  border:1px solid var(--line); background:var(--panel);
+  padding:12px 14px; margin-bottom:12px; cursor:pointer; position:relative;
+  transition: border-color .15s;
+}
+.card:hover, .card:focus-visible { border-color: var(--amber-dim); outline:none; }
+.card.active { border-color: var(--amber); background:var(--panel-2); }
+/* a "etiqueta de catálogo" pregada no canto — assinatura visual */
+.card .tag {
+  position:absolute; top:-1px; right:10px;
+  background:var(--amber); color:var(--bg);
+  font-size:10px; font-weight:600; padding:2px 7px 3px;
+  clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%);
+}
+.card h3 { font-size:14px; color:var(--amber-soft); margin-bottom:4px; padding-right:70px; }
+.card .meta { font-size:11px; color:var(--ink-dim); display:flex; gap:10px; }
+.card.solved h3::after { content:' ✓'; color:var(--green); }
+.pips { letter-spacing:2px; color:var(--amber); }
+
+/* ---------- Bancada (editor + terminal) ---------- */
+.bench { padding:20px 24px; display:flex; flex-direction:column; gap:14px; }
+.brief {
+  border-left:3px solid var(--amber); padding:10px 14px;
+  background:var(--panel); font-size:13px; line-height:1.55;
+}
+.brief b { color: var(--amber-soft); }
+textarea#editor {
+  width:100%; min-height:280px; resize:vertical;
+  background:var(--panel-2); color:var(--amber-soft);
+  border:1px solid var(--line); padding:14px;
+  font-family:'IBM Plex Mono',monospace; font-size:13px; line-height:1.6;
+  tab-size:4; caret-color:var(--amber);
+}
+textarea#editor:focus { outline:1px solid var(--amber-dim); }
+
+.actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+button {
+  font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;
+  padding:9px 18px; cursor:pointer; border:1px solid var(--amber);
+  background:transparent; color:var(--amber); transition: background .15s, color .15s;
+}
+button:hover, button:focus-visible { background:var(--amber); color:var(--bg); outline:none; }
+button.ghost { border-color:var(--line); color:var(--ink-dim); }
+button.ghost:hover { background:var(--panel-2); color:var(--ink); }
+button:disabled { opacity:.4; cursor:not-allowed; }
+.hint-cost { font-size:11px; color:var(--ink-dim); }
+
+/* ---------- Terminal (verde, como deve ser) ---------- */
+.terminal {
+  background:#0d1208; border:1px solid #23301c;
+  padding:14px; min-height:110px; font-size:13px; line-height:1.6;
+  color:var(--green); white-space:pre-wrap; word-break:break-word;
+}
+.terminal .err { color:var(--red); }
+.terminal .sys { color:var(--ink-dim); }
+.terminal .ok::before { content:'▮ '; }
+
+/* ---------- Mentor ---------- */
+.mentor {
+  border:1px dashed var(--amber-dim); padding:12px 16px;
+  background:var(--panel); font-size:13px; line-height:1.6; display:none;
+}
+.mentor.visible { display:block; }
+.mentor .who {
+  font-family:'VT323',monospace; font-size:17px;
+  color:var(--amber); margin-bottom:4px; letter-spacing:1px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">BUGHUNT ARENA<span class="blink">_</span></div>
+  <div class="stats">
+    <span>streak <b id="streak">3🔥</b></span>
+    <span>xp <b id="xp">450</b></span>
+    <span>nível <b id="level">3</b></span>
+  </div>
+</header>
+
+<main>
+  <aside class="specimens">
+    <h2>Espécimes catalogados</h2>
+    <div id="challenge-list"></div>
+  </aside>
+
+  <section class="bench">
+    <div class="brief" id="brief">Escolhe um espécime da coleção para começar a caçada.</div>
+    <textarea id="editor" spellcheck="false" aria-label="Editor de código"></textarea>
+    <div class="actions">
+      <button id="run">Executar no sandbox</button>
+      <button id="hint" class="ghost">Pedir dica</button>
+      <span class="hint-cost" id="hint-info">dicas usadas: 0 · cada dica custa 20% dos pontos</span>
+    </div>
+    <div class="mentor" id="mentor">
+      <div class="who">MENTOR</div>
+      <div id="mentor-text"></div>
+    </div>
+    <div class="terminal" id="terminal"><span class="sys">sandbox pronto — 256MB RAM · 0.5 CPU · sem rede · timeout 10s</span></div>
+  </section>
+</main>
+
+<script>
+/* ============================================================
+   Modo demo: sem backend, simula o SandboxExecutor e o mentor.
+   Com backend ativo, trocar DEMO=false e as chamadas fetch()
+   apontam para /api/challenges e /api/mentor/hint.
+   ============================================================ */
+const DEMO = true;
+const API = 'http://localhost:8080/api';
+
+/* Espelho dos SeedChallenges.java (subset para a demo) */
+const CHALLENGES = [
+  {
+    id:'off-by-one-01', title:'O array rebelde', concept:'ciclos',
+    difficulty:1, points:100, language:'JAVA',
+    description:'Este programa devia imprimir a soma dos elementos do array, mas rebenta com uma exceção. Encontra e corrige o bug.',
+    buggyCode:`public class Main {
+    public static void main(String[] args) {
+        int[] numeros = {10, 20, 30, 40, 50};
+        int soma = 0;
+        for (int i = 0; i <= numeros.length; i++) {
+            soma += numeros[i];
+        }
+        System.out.println("Soma: " + soma);
+    }
+}`,
+    /* verificação demo: o fix canónico */
+    solvedIf: code => code.includes('i < numeros.length') && !code.includes('<='),
+    expected:'Soma: 150',
+    bugOutput:'Exception in thread "main" java.lang.ArrayIndexOutOfBoundsException: Index 5 out of bounds for length 5',
+    hints:[
+      'Quantas posições tem um array de 5 elementos — e qual é o índice da última?',
+      'Olha com atenção para a condição de paragem do ciclo for.',
+      'Em Java, os índices vão de 0 a length-1. Uma condição i <= length tenta ler uma posição a mais.',
+      'A condição i <= numeros.length permite i=5, mas o último índice válido é 4. Troca <= por <.'
+    ]
+  },
+  {
+    id:'string-compare-01', title:'Iguais mas diferentes', concept:'strings',
+    difficulty:1, points:100, language:'JAVA',
+    description:'O login devia aceitar a password correta, mas rejeita sempre. Porquê? (Dica: em Java, nem tudo o que parece igual É igual.)',
+    buggyCode:`public class Main {
+    public static void main(String[] args) {
+        String passwordCorreta = new String("bughunt2026");
+        String tentativa = new String("bughunt2026");
+        if (passwordCorreta == tentativa) {
+            System.out.println("Acesso concedido");
+        } else {
+            System.out.println("Acesso negado");
+        }
+    }
+}`,
+    solvedIf: code => code.includes('.equals('),
+    expected:'Acesso concedido',
+    bugOutput:'Acesso negado',
+    hints:[
+      'O que é que o operador == compara quando os operandos são objetos?',
+      'O problema está na condição do if.',
+      'Em Java, == compara referências (endereços de memória); dois new String() nunca são a mesma referência, mesmo com o mesmo conteúdo.',
+      'Usa passwordCorreta.equals(tentativa) para comparar o conteúdo das strings.'
+    ]
+  },
+  {
+    id:'mutable-default-01', title:'A lista fantasma', concept:'funcoes',
+    difficulty:2, points:150, language:'PYTHON',
+    description:'Cada chamada devia criar uma lista nova, mas os itens acumulam-se entre chamadas. Um dos bugs mais famosos de Python.',
+    buggyCode:`def adicionar_item(item, lista=[]):
+    lista.append(item)
+    return lista
+
+print(adicionar_item("a"))
+print(adicionar_item("b"))
+print(adicionar_item("c"))`,
+    solvedIf: code => code.includes('lista=None') || code.includes('lista = None'),
+    expected:"['a']\n['b']\n['c']",
+    bugOutput:"['a']\n['a', 'b']\n['a', 'b', 'c']",
+    hints:[
+      'Quando é que o valor default de um parâmetro é criado em Python — em cada chamada, ou só uma vez?',
+      'O problema está na assinatura da função, não no corpo.',
+      'Defaults mutáveis em Python são avaliados UMA vez, na definição da função. Todas as chamadas partilham a mesma lista.',
+      'Usa lista=None como default e dentro da função faz: if lista is None: lista = [].'
+    ]
+  },
+  {
+    id:'sql-injection-01', title:'A pesquisa perigosa', concept:'seguranca-input',
+    difficulty:3, points:250, language:'PYTHON',
+    description:'Esta função constrói SQL por concatenação — vulnerável a injection. Implementa sanitize() para neutralizar aspas simples duplicando-as, como fazem os drivers reais.',
+    buggyCode:`def sanitize(valor):
+    # TODO: neutralizar aspas simples
+    return valor
+
+def build_query(username):
+    return "SELECT * FROM users WHERE name = '" + sanitize(username) + "'"
+
+print(build_query("maria"))
+print(build_query("x' OR '1'='1"))`,
+    solvedIf: code => code.includes(`replace("'", "''")`) || code.includes(`replace("'","''")`),
+    expected:"SELECT * FROM users WHERE name = 'maria'\nSELECT * FROM users WHERE name = 'x'' OR ''1''=''1'",
+    bugOutput:"SELECT * FROM users WHERE name = 'maria'\nSELECT * FROM users WHERE name = 'x' OR '1'='1'  ⚠ INJEÇÃO BEM-SUCEDIDA",
+    hints:[
+      'O que acontece à query se o username contiver uma aspa simples?',
+      'A defesa faz-se dentro da função sanitize().',
+      'A convenção SQL para representar uma aspa literal dentro de uma string é duplicá-la: \'\' .',
+      "Implementa: return valor.replace(\"'\", \"''\") — cada aspa vira duas."
+    ]
+  }
+];
+
+/* ---------- Estado ---------- */
+let current = null;
+let hintsUsed = 0;
+let failedAttempts = 0;
+let solved = new Set();
+
+/* ---------- Render da coleção ---------- */
+const listEl = document.getElementById('challenge-list');
+function renderList(){
+  listEl.innerHTML = '';
+  CHALLENGES.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'card' + (current?.id===c.id?' active':'') + (solved.has(c.id)?' solved':'');
+    div.tabIndex = 0;
+    div.setAttribute('role','button');
+    div.innerHTML = `
+      <span class="tag">${c.language}</span>
+      <h3>${c.title}</h3>
+      <div class="meta">
+        <span class="pips">${'◆'.repeat(c.difficulty)}${'◇'.repeat(5-c.difficulty)}</span>
+        <span>${c.points} pts</span>
+        <span>#${c.concept}</span>
+      </div>`;
+    div.onclick = () => select(c);
+    div.onkeydown = e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); select(c);} };
+    listEl.appendChild(div);
+  });
+}
+
+function select(c){
+  current = c; hintsUsed = 0; failedAttempts = 0;
+  document.getElementById('brief').innerHTML =
+    `<b>${c.title}</b> — ${c.description}`;
+  document.getElementById('editor').value = c.buggyCode;
+  document.getElementById('mentor').classList.remove('visible');
+  updateHintInfo();
+  term(`espécime ${c.id} carregado — boa caçada`, 'sys');
+  renderList();
+}
+
+/* ---------- Terminal ---------- */
+const termEl = document.getElementById('terminal');
+function term(text, cls){
+  const line = document.createElement('div');
+  if(cls) line.className = cls;
+  line.textContent = text;
+  termEl.appendChild(line);
+  termEl.scrollTop = termEl.scrollHeight;
+}
+
+/* ---------- Execução ---------- */
+document.getElementById('run').onclick = async () => {
+  if(!current){ term('escolhe primeiro um espécime', 'sys'); return; }
+  const code = document.getElementById('editor').value;
+  term('> a compilar e executar no sandbox…', 'sys');
+
+  let response;
+  if(DEMO){
+    await new Promise(r => setTimeout(r, 700));   // latência simulada
+    const ok = current.solvedIf(code);
+    response = ok
+      ? { solved:true, resultType:'SUCCESS', stdout: current.expected }
+      : { solved:false, resultType:'RUNTIME_ERROR', stdout:'', stderr: current.bugOutput };
+  } else {
+    const res = await fetch(`${API}/challenges/${current.id}/submit`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ code })
+    });
+    response = await res.json();
+  }
+
+  if(response.solved){
+    solved.add(current.id);
+    const engine_points = Math.max(Math.round(current.points * Math.max(1 - hintsUsed*0.2, 0.2)), 1);
+    term(response.stdout);
+    term(`✓ BUG CAÇADO — +${engine_points} pts (${hintsUsed} dica${hintsUsed===1?'':'s'} usada${hintsUsed===1?'':'s'})`, 'ok');
+    const xpEl = document.getElementById('xp');
+    xpEl.textContent = parseInt(xpEl.textContent) + engine_points;
+    renderList();
+  } else {
+    failedAttempts++;
+    if(response.stdout) term(response.stdout);
+    term(response.stderr || 'output diferente do esperado', 'err');
+    term(`tentativa falhada #${failedAttempts}`, 'sys');
+  }
+};
+
+/* ---------- Mentor socrático ---------- */
+const LEVEL_NAMES = ['pergunta socrática','pista de localização','explicação do conceito','explicação direta'];
+function updateHintInfo(){
+  document.getElementById('hint-info').textContent =
+    `dicas usadas: ${hintsUsed} · próxima: ${LEVEL_NAMES[Math.min(hintsUsed,3)]} · cada dica custa 20% dos pontos`;
+}
+document.getElementById('hint').onclick = async () => {
+  if(!current){ term('escolhe primeiro um espécime', 'sys'); return; }
+  // cap anti-vibecoding: nível 4 (direto) exige 3 tentativas falhadas
+  let level = Math.min(hintsUsed, 3);
+  if(level === 3 && failedAttempts < 3){
+    level = 2;
+    term('mentor: explicação direta bloqueada — tenta pelo menos 3 vezes primeiro', 'sys');
+  }
+  let hintText;
+  if(DEMO){
+    hintText = current.hints[level];
+  } else {
+    const res = await fetch(`${API}/mentor/hint`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        challengeId: current.id,
+        code: document.getElementById('editor').value,
+        lastOutput: '',
+        hintLevel: ['SOCRATIC_QUESTION','LOCATION_HINT','CONCEPT_EXPLANATION','DIRECT_EXPLANATION'][level],
+        skillLevel: 'iniciante',
+        problematicConcepts: [],
+        failedAttempts
+      })
+    });
+    hintText = (await res.json()).hint;
+  }
+  hintsUsed++;
+  updateHintInfo();
+  const mentor = document.getElementById('mentor');
+  mentor.classList.add('visible');
+  document.getElementById('mentor-text').textContent = hintText;
+};
+
+renderList();
+</script>
+</body>
+</html>

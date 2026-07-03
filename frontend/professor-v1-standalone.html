@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BugHunt Arena — Painel do Professor</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mesma identidade visual da arena — âmbar sobre castanho-negro,
+   mas aqui o registo é "sala de controlo", não "bancada de caça". */
+:root {
+  --bg:#16120c; --panel:#1e1810; --panel-2:#241d13; --line:#3a2f1d;
+  --amber:#e8a33d; --amber-dim:#a97a2f; --amber-soft:#f4d9a6;
+  --green:#7dd87d; --red:#e05d44; --yellow:#e8d33d;
+  --ink:#d8cbb3; --ink-dim:#8d8066;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--ink); font-family:'IBM Plex Mono',monospace; font-size:14px; }
+body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:9;
+  background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.12) 2px 3px); }
+@media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important;} }
+
+header { display:flex; align-items:center; justify-content:space-between;
+  padding:14px 24px; border-bottom:1px solid var(--line); background:var(--panel); }
+.logo { font-family:'VT323',monospace; font-size:28px; color:var(--amber); }
+.logo small { font-size:16px; color:var(--ink-dim); margin-left:10px; }
+select { background:var(--panel-2); color:var(--amber-soft); border:1px solid var(--line);
+  font-family:inherit; font-size:13px; padding:7px 10px; }
+
+main { padding:24px; display:grid; gap:22px; max-width:1100px; margin:0 auto; }
+h2 { font-family:'VT323',monospace; font-size:20px; color:var(--amber-dim);
+  text-transform:uppercase; letter-spacing:2px; margin-bottom:12px; }
+section { background:var(--panel); border:1px solid var(--line); padding:18px; }
+
+/* ---------- Recomendação da próxima aula ---------- */
+.recommendation { border-left:4px solid var(--red); padding:14px 18px;
+  background:var(--panel-2); line-height:1.6; }
+.recommendation b { color:var(--amber-soft); }
+.recommendation .lead { font-family:'VT323',monospace; font-size:18px; color:var(--red);
+  letter-spacing:1px; margin-bottom:4px; }
+
+/* ---------- Heatmap ---------- */
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--line); }
+th { color:var(--ink-dim); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.bar { display:inline-block; height:11px; vertical-align:middle; margin-right:8px; }
+.sev-CRITICAL .bar { background:var(--red); }
+.sev-ATTENTION .bar { background:var(--yellow); }
+.sev-OK .bar { background:var(--green); }
+.sev-label { font-size:10px; padding:2px 7px; border:1px solid; letter-spacing:1px; }
+.sev-CRITICAL .sev-label { color:var(--red); border-color:var(--red); }
+.sev-ATTENTION .sev-label { color:var(--yellow); border-color:var(--yellow); }
+.sev-OK .sev-label { color:var(--green); border-color:var(--green); }
+
+/* ---------- Alertas de alunos ---------- */
+.alert-row { display:flex; align-items:center; gap:14px; padding:10px 4px;
+  border-bottom:1px solid var(--line); }
+.alert-row:last-child { border-bottom:none; }
+.alert-row .who { min-width:110px; color:var(--amber-soft); }
+.alert-row .what { color:var(--ink-dim); font-size:12px; flex:1; }
+.alert-row .rate { color:var(--red); font-weight:600; }
+.empty { color:var(--ink-dim); padding:8px 4px; font-style:italic; }
+
+footer { text-align:center; color:var(--ink-dim); font-size:11px; padding:18px;
+  border-top:1px solid var(--line); margin-top:10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">BUGHUNT ARENA<small>painel do professor</small></div>
+  <select id="turma" aria-label="Escolher turma">
+    <option>11ºB Informática — 2026/2027</option>
+    <option>10ºA Informática — 2026/2027</option>
+  </select>
+</header>
+
+<main>
+  <section>
+    <h2>Próxima aula</h2>
+    <div class="recommendation" id="recommendation"></div>
+  </section>
+
+  <section>
+    <h2>Heatmap da turma · conceito × dificuldade</h2>
+    <table aria-label="Heatmap de conceitos">
+      <thead>
+        <tr><th>Conceito</th><th>Taxa de erro média</th><th class="num">Alunos</th><th class="num">Tentativas</th><th>Estado</th></tr>
+      </thead>
+      <tbody id="heatmap"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Alunos que precisam de atenção</h2>
+    <div id="alerts"></div>
+  </section>
+</main>
+
+<footer>
+  dados agregados para fins pedagógicos · conformidade RGPD: contas geridas pela escola,
+  consentimento dos encarregados de educação registado
+</footer>
+
+<script>
+/* Modo demo — dados que na versão real vêm de GET /api/teacher/classes/{id}/heatmap
+   (a view class_concept_heatmap + students_needing_help do PostgreSQL). */
+const HEATMAP = [
+  { concept:'ciclos',            errorRate:0.70, students:18, attempts:214, severity:'CRITICAL' },
+  { concept:'seguranca-input',   errorRate:0.63, students:12, attempts:96,  severity:'CRITICAL' },
+  { concept:'strings',           errorRate:0.41, students:17, attempts:150, severity:'ATTENTION' },
+  { concept:'tipos',             errorRate:0.35, students:19, attempts:180, severity:'ATTENTION' },
+  { concept:'condicionais',      errorRate:0.22, students:20, attempts:260, severity:'OK' },
+  { concept:'variaveis',         errorRate:0.11, students:20, attempts:310, severity:'OK' },
+];
+const ALERTS = [
+  { name:'Aluno #14', concept:'ciclos',          rate:0.86, attempts:14 },
+  { name:'Aluno #07', concept:'ciclos',          rate:0.78, attempts:9  },
+  { name:'Aluno #14', concept:'strings',         rate:0.71, attempts:7  },
+  { name:'Aluno #03', concept:'seguranca-input', rate:0.67, attempts:6  },
+];
+const RECOMMENDATION = {
+  concept:'ciclos', students:18, rate:0.70,
+  detail:'18 de 20 alunos tentaram desafios de ciclos com uma taxa de erro média de 70%. O padrão dominante é off-by-one na condição de paragem. Sugestão: rever índices de arrays e condições de ciclo na próxima aula, e atribuir os desafios "O array rebelde" e variantes geradas de dificuldade 1.'
+};
+
+document.getElementById('recommendation').innerHTML = `
+  <div class="lead">REVER: ${RECOMMENDATION.concept.toUpperCase()}</div>
+  ${RECOMMENDATION.detail}`;
+
+document.getElementById('heatmap').innerHTML = HEATMAP.map(h => `
+  <tr class="sev-${h.severity}">
+    <td>#${h.concept}</td>
+    <td><span class="bar" style="width:${Math.round(h.errorRate*140)}px"></span>${Math.round(h.errorRate*100)}%</td>
+    <td class="num">${h.students}</td>
+    <td class="num">${h.attempts}</td>
+    <td><span class="sev-label">${h.severity}</span></td>
+  </tr>`).join('');
+
+document.getElementById('alerts').innerHTML = ALERTS.length
+  ? ALERTS.map(a => `
+      <div class="alert-row">
+        <span class="who">${a.name}</span>
+        <span class="what">#${a.concept} · ${a.attempts} tentativas</span>
+        <span class="rate">${Math.round(a.rate*100)}% erro</span>
+      </div>`).join('')
+  : '<div class="empty">Nenhum aluno em risco — bom trabalho.</div>';
+</script>
+</body>
+</html>

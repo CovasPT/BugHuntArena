@@ -1,0 +1,35 @@
+# Ambiente de desenvolvimento local completo.
+# Arrancar: docker compose up -d
+# A API corre FORA do compose (mvn spring-boot:run) porque precisa
+# de acesso ao Docker socket do host para lançar sandboxes.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bughunt
+      POSTGRES_USER: bughunt
+      POSTGRES_PASSWORD: dev-only-password   # em produção: secrets do Azure
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Schema e funções aplicados automaticamente no primeiro arranque:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/functions.sql:/docker-entrypoint-initdb.d/02-functions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bughunt"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
